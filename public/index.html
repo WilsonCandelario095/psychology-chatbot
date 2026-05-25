@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat con el psicólogo</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="chat">
+    <h2>Chat con Gemini</h2>
+
+    <textarea
+      id="message"
+      placeholder="Escribe algo..."
+    ></textarea>
+
+    <button onclick="sendMessage()">
+      Enviar
+    </button>
+
+    <div
+      class="response"
+      id="response"
+    ></div>
+  </div>
+
+  <script src="script.js"></script>
+
+</body>
+</html>
