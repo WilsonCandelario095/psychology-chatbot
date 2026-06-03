@@ -1,12 +1,45 @@
+const messagesDiv =
+  document.getElementById("messages");
+
+const textarea =
+  document.getElementById("message");
+
+const userId =
+  crypto.randomUUID();
+
+function addMessage(text, sender) {
+
+  const div = document.createElement("div");
+
+  div.classList.add("message");
+  div.classList.add(sender);
+
+  div.innerText = text;
+
+  messagesDiv.appendChild(div);
+
+  messagesDiv.scrollTop =
+    messagesDiv.scrollHeight;
+
+  return div;
+}
+
 async function sendMessage() {
 
-  const message =
-    document.getElementById("message").value;
+  const message = textarea.value.trim();
 
-  const responseDiv =
-    document.getElementById("response");
+  if (!message) return;
 
-  responseDiv.innerHTML = "Pensando...";
+  // Mostrar mensaje usuario
+  addMessage(message, "user");
+
+  textarea.value = "";
+
+  // Mensaje temporal
+  const typing =
+    addMessage("Victor está escribiendo...", "bot");
+
+  typing.classList.add("typing");
 
   try {
 
@@ -20,6 +53,7 @@ async function sendMessage() {
         },
 
         body: JSON.stringify({
+          userId,
           message,
         }),
       }
@@ -27,12 +61,31 @@ async function sendMessage() {
 
     const data = await res.json();
 
-    responseDiv.innerHTML =
-      data.reply || data.error;
+    typing.remove();
+
+    addMessage(
+      data.reply || data.error,
+      "bot"
+    );
 
   } catch (error) {
 
-    responseDiv.innerHTML =
-      error.message;
+    typing.remove();
+
+    addMessage(
+      error.message,
+      "bot"
+    );
   }
 }
+
+// ENTER para enviar
+textarea.addEventListener("keydown", (e) => {
+
+  if (e.key === "Enter" && !e.shiftKey) {
+
+    e.preventDefault();
+
+    sendMessage();
+  }
+});

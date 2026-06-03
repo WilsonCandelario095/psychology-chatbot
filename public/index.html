@@ -1,30 +1,34 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chat con el psicólogo</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Victor AI</title>
 
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <div class="chat">
-    <h2>Chat con Gemini</h2>
+  <div class="chat-container">
 
-    <textarea
-      id="message"
-      placeholder="Escribe algo..."
-    ></textarea>
+    <div class="header">
+      <h2>Victor AI</h2>
+      <span>Asistente emocional</span>
+    </div>
 
-    <button onclick="sendMessage()">
-      Enviar
-    </button>
+    <div class="messages" id="messages"></div>
 
-    <div
-      class="response"
-      id="response"
-    ></div>
+    <div class="input-area">
+      <textarea
+        id="message"
+        placeholder="Escribe un mensaje..."
+      ></textarea>
+
+      <button onclick="sendMessage()">
+        Enviar
+      </button>
+    </div>
+
   </div>
 
   <script src="script.js"></script>
