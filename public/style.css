@@ -29,11 +29,45 @@ body {
   background: #1e293b;
   color: white;
   border-bottom: 1px solid #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
 }
 
-.header span {
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-top h2 {
+  margin: 0;
+}
+
+.header-top span {
   color: #94a3b8;
   font-size: 14px;
+}
+
+.profile-select {
+  padding: 10px 15px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.3s;
+}
+
+.profile-select:hover {
+  border-color: #2563eb;
+}
+
+.profile-select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
 }
 
 .messages {
@@ -104,4 +138,12 @@ button {
 
 button:hover {
   background: #1d4ed8;
+}
+
+.system {
+  align-self: center;
+  background: #334155;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-style: italic;
 }

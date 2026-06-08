@@ -1,23 +1,47 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+import { getProfile, listProfiles } from "./profiles.js";
 
 dotenv.config();
 
 const app = express();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
 /*
   Memoria simple en RAM
+  Estructura: conversations[userId][profileKey] = [ historial ]
   Luego puedes usar MongoDB/PostgreSQL
 */
 const conversations = {};
 
+// Endpoint para listar perfiles disponibles
+app.get("/profiles", (req, res) => {
+  res.json({
+    profiles: listProfiles(),
+  });
+});
+
+// Endpoint para obtener detalles de un perfil
+app.get("/profiles/:profileKey", (req, res) => {
+  const profile = getProfile(req.params.profileKey);
+  res.json(profile);
+});
+
+// Endpoint para chat con soporte de perfiles
 app.post("/chat", async (req, res) => {
   try {
-    const { message, userId = "default-user" } = req.body;
+    const { 
+      message, 
+      userId = "default-user",
+      profileKey = "psychologist" // Perfil por defecto
+    } = req.body;
 
     if (!message) {
       return res.status(400).json({
@@ -25,26 +49,22 @@ app.post("/chat", async (req, res) => {
       });
     }
 
-    // Crear historial si no existe
+    // Obtener el perfil seleccionado
+    const profile = getProfile(profileKey);
+
+    // Crear estructura de usuario si no existe
     if (!conversations[userId]) {
-      conversations[userId] = [
+      conversations[userId] = {};
+    }
+
+    // Crear historial para este perfil si no existe
+    if (!conversations[userId][profileKey]) {
+      conversations[userId][profileKey] = [
         {
           role: "user",
           parts: [
             {
-              text: `
-Eres un asistente psicológico de apoyo emocional.
-
-Reglas:
-- No diagnosticas enfermedades
-- No reemplazas psicólogos
-- Ayudas a reflexionar
-- Usas tono empático y calmado
-- Haces preguntas abiertas
-- Hablas de manera natural y fluida
-- Recuerdas el contexto de la conversación
-- Respondes corto y humano
-              `,
+              text: profile.systemPrompt,
             },
           ],
         },
@@ -52,7 +72,7 @@ Reglas:
     }
 
     // Agregar mensaje del usuario
-    conversations[userId].push({
+    conversations[userId][profileKey].push({
       role: "user",
       parts: [{ text: message }],
     });
@@ -65,7 +85,7 @@ Reglas:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contents: conversations[userId],
+          contents: conversations[userId][profileKey],
         }),
       }
     );
@@ -83,12 +103,18 @@ Reglas:
     }
 
     // Guardar respuesta del modelo
-    conversations[userId].push({
+    conversations[userId][profileKey].push({
       role: "model",
       parts: [{ text: reply }],
     });
 
-    res.json({ reply });
+    res.json({ 
+      reply,
+      profile: {
+        key: profileKey,
+        name: profile.name,
+      },
+    });
 
   } catch (error) {
     console.error(error);
@@ -96,6 +122,18 @@ Reglas:
     res.status(500).json({
       error: error.message,
     });
+  }
+});
+
+// Endpoint para limpiar el historial de un perfil
+app.delete("/chat/:userId/:profileKey", (req, res) => {
+  const { userId, profileKey } = req.params;
+  
+  if (conversations[userId] && conversations[userId][profileKey]) {
+    delete conversations[userId][profileKey];
+    res.json({ message: "Conversation cleared" });
+  } else {
+    res.status(404).json({ error: "Conversation not found" });
   }
 });
 
