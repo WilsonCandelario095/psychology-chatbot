@@ -6,7 +6,8 @@ import { fileURLToPath } from "url";
 import { getProfile, listProfiles } from "./profiles.js";
 import {
   loadDocuments,
-  listDocuments,
+  listPatients,
+  getPatientDocument,
   getRelevantDocuments,
   buildDocumentContext,
 } from "./documents.js";
@@ -36,11 +37,10 @@ app.get("/profiles", (req, res) => {
   });
 });
 
-// Endpoint para listar documentos según el perfil actual
-app.get("/documents", (req, res) => {
-  const profileKey = req.query.profileKey || "psychologist";
+// Endpoint para listar pacientes disponibles
+app.get(["/patients", "/documents"], (req, res) => {
   res.json({
-    documents: listDocuments(documents, profileKey),
+    patients: listPatients(documents),
   });
 });
 
@@ -56,7 +56,7 @@ app.post("/chat", async (req, res) => {
     const { 
       message, 
       userId = "default-user",
-      profileKey = "psychologist" // Perfil por defecto
+      patientId
     } = req.body;
 
     if (!message) {
@@ -65,8 +65,14 @@ app.post("/chat", async (req, res) => {
       });
     }
 
-    // Obtener el perfil seleccionado
-    const profile = getProfile(profileKey);
+    const profile = getProfile("patient");
+    const selectedPatient = getPatientDocument(documents, patientId);
+
+    if (!selectedPatient) {
+      return res.status(404).json({
+        error: "No patient documents available",
+      });
+    }
 
     // Crear estructura de usuario si no existe
     if (!conversations[userId]) {
@@ -74,23 +80,25 @@ app.post("/chat", async (req, res) => {
     }
 
     // Crear historial para este perfil si no existe
-    if (!conversations[userId][profileKey]) {
-      conversations[userId][profileKey] = [
+    if (!conversations[userId][selectedPatient.id]) {
+      const patientContext = buildDocumentContext([selectedPatient]);
+
+      conversations[userId][selectedPatient.id] = [
         {
           role: "user",
           parts: [
             {
-              text: profile.systemPrompt,
+              text: `${profile.systemPrompt}\n\nContexto del paciente seleccionado:\n\n${patientContext}`,
             },
           ],
         },
       ];
     }
 
-    const relevantDocs = getRelevantDocuments(documents, profileKey, message);
+    const relevantDocs = getRelevantDocuments([selectedPatient], "patient", message);
     const docContext = buildDocumentContext(relevantDocs);
 
-    const contents = conversations[userId][profileKey].map((item) => ({
+    const contents = conversations[userId][selectedPatient.id].map((item) => ({
       ...item,
       role: item.role === "system" ? "user" : item.role,
     }));
@@ -139,7 +147,7 @@ app.post("/chat", async (req, res) => {
     }
 
     // Guardar respuesta del modelo
-    conversations[userId][profileKey].push({
+    conversations[userId][selectedPatient.id].push({
       role: "model",
       parts: [{ text: reply }],
     });
@@ -147,8 +155,8 @@ app.post("/chat", async (req, res) => {
     res.json({ 
       reply,
       profile: {
-        key: profileKey,
-        name: profile.name,
+        key: selectedPatient.id,
+        name: selectedPatient.title,
       },
     });
 
@@ -162,11 +170,11 @@ app.post("/chat", async (req, res) => {
 });
 
 // Endpoint para limpiar el historial de un perfil
-app.delete("/chat/:userId/:profileKey", (req, res) => {
-  const { userId, profileKey } = req.params;
+app.delete("/chat/:userId/:patientId", (req, res) => {
+  const { userId, patientId } = req.params;
   
-  if (conversations[userId] && conversations[userId][profileKey]) {
-    delete conversations[userId][profileKey];
+  if (conversations[userId] && conversations[userId][patientId]) {
+    delete conversations[userId][patientId];
     res.json({ message: "Conversation cleared" });
   } else {
     res.status(404).json({ error: "Conversation not found" });

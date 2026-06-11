@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Victor AI</title>
+  <title>Paciente IA</title>
 
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -13,11 +13,11 @@
 
     <div class="header">
       <div class="header-top">
-        <h2>Victor AI</h2>
-        <span id="profileName">Cargando perfiles...</span>
+        <h2>Paciente IA</h2>
+        <span id="profileName">Paciente virtual</span>
       </div>
-      <select id="profileSelect" onchange="changeProfile()" class="profile-select">
-        <option value="">Cargando perfiles...</option>
+      <select id="patientSelect" class="profile-select">
+        <option value="">Cargando pacientes...</option>
       </select>
     </div>
 
@@ -26,7 +26,7 @@
     <div class="input-area">
       <textarea
         id="message"
-        placeholder="Escribe un mensaje..."
+        placeholder="Escribe como psicólogo..."
       ></textarea>
 
       <button onclick="sendMessage()">

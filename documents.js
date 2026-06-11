@@ -20,15 +20,7 @@ export async function loadDocuments() {
       );
 
       const id = path.basename(fileName, ext);
-      let audience = ["psychologist", "patient"];
-
-      if (id.startsWith("psychologist_")) {
-        audience = ["psychologist"];
-      } else if (id.startsWith("patient_")) {
-        audience = ["patient"];
-      } else if (id.startsWith("shared_")) {
-        audience = ["psychologist", "patient"];
-      }
+      const audience = ["patient"];
 
       docs.push({
         id,
@@ -45,10 +37,21 @@ export async function loadDocuments() {
   }
 }
 
+export function listPatients(documents) {
+  return documents.map((doc) => ({
+    id: doc.id,
+    name: getSelectorLabel(doc.title),
+    summary: getDocumentSummary(doc.content),
+    audience: doc.audience,
+  }));
+}
+
+export function getPatientDocument(documents, patientId) {
+  return documents.find((doc) => doc.id === patientId) || documents[0] || null;
+}
+
 export function listDocuments(documents, profileKey) {
-  return documents
-    .filter((doc) => doc.audience.includes(profileKey))
-    .map((doc) => ({ id: doc.id, title: doc.title, audience: doc.audience }));
+  return listPatients(documents).filter((doc) => doc.audience.includes(profileKey));
 }
 
 export function getRelevantDocuments(documents, profileKey, message) {
@@ -94,4 +97,24 @@ export function buildDocumentContext(documents) {
 function truncate(text, maxLength) {
   if (!text || text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
+}
+
+function getDocumentSummary(content) {
+  if (!content) return "";
+
+  const firstLine = content
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  if (!firstLine) return "";
+
+  return truncate(firstLine.replace(/^PROMPT\s+–\s+/i, ""), 80);
+}
+
+function getSelectorLabel(title) {
+  if (!title) return "";
+
+  const words = title.trim().split(/\s+/).filter(Boolean);
+  return words[2] || words[words.length - 1] || title;
 }

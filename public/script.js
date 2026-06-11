@@ -4,61 +4,59 @@ const messagesDiv =
 const textarea =
   document.getElementById("message");
 
-const profileSelect =
-  document.getElementById("profileSelect");
-
 const profileName =
   document.getElementById("profileName");
+
+const patientSelect =
+  document.getElementById("patientSelect");
 
 const userId =
   crypto.randomUUID();
 
-let currentProfile = "psychologist"; // Perfil por defecto
+let currentPatientId = "";
+let patients = [];
 
-// Cargar perfiles al iniciar
-async function loadProfiles() {
-  try {
-    const res = await fetch("http://localhost:3000/profiles");
-    const data = await res.json();
-    
-    // Llenar el select con los perfiles
-    profileSelect.innerHTML = "";
-    data.profiles.forEach((profile) => {
-      const option = document.createElement("option");
-      option.value = profile.key;
-      option.textContent = profile.name;
-      profileSelect.appendChild(option);
-    });
-    
-    profileSelect.value = currentProfile;
-    updateProfileDisplay();
-    
-  } catch (error) {
-    console.error("Error loading profiles:", error);
-    profileSelect.innerHTML = '<option>Error al cargar perfiles</option>';
-  }
-}
-
-// Cambiar de perfil
-function changeProfile() {
-  const newProfile = profileSelect.value;
-  
-  if (newProfile !== currentProfile) {
-    currentProfile = newProfile;
-    
-    // Limpiar mensajes anteriores
-    messagesDiv.innerHTML = "";
-    
-    addMessage(`Has cambiado al perfil: ${profileSelect.options[profileSelect.selectedIndex].text}`, "system");
-    
-    updateProfileDisplay();
-  }
-}
-
-// Actualizar el nombre del perfil en el header
 function updateProfileDisplay() {
-  const selectedOption = profileSelect.options[profileSelect.selectedIndex];
-  profileName.textContent = selectedOption.textContent;
+  const selectedPatient = patients.find((patient) => patient.id === currentPatientId);
+  profileName.textContent = selectedPatient
+    ? selectedPatient.name
+    : "Paciente virtual";
+}
+
+async function loadPatients() {
+  try {
+    const res = await fetch("http://localhost:3000/patients");
+    const data = await res.json();
+
+    patients = data.patients || [];
+    patientSelect.innerHTML = "";
+
+    if (patients.length === 0) {
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = "No hay pacientes disponibles";
+      patientSelect.appendChild(emptyOption);
+      profileName.textContent = "Sin pacientes";
+      return;
+    }
+
+    patients.forEach((patient) => {
+      const option = document.createElement("option");
+      option.value = patient.id;
+      option.textContent = patient.name;
+      if (patient.summary) {
+        option.title = patient.summary;
+      }
+      patientSelect.appendChild(option);
+    });
+
+    currentPatientId = patients[0].id;
+    patientSelect.value = currentPatientId;
+    updateProfileDisplay();
+  } catch (error) {
+    console.error("Error loading patients:", error);
+    patientSelect.innerHTML = '<option value="">Error al cargar pacientes</option>';
+  }
 }
 
 function addMessage(text, sender) {
@@ -91,7 +89,7 @@ async function sendMessage() {
 
   // Mensaje temporal
   const typing =
-    addMessage("Victor está escribiendo...", "bot");
+    addMessage("La paciente está escribiendo...", "bot");
 
   typing.classList.add("typing");
 
@@ -108,7 +106,7 @@ async function sendMessage() {
 
         body: JSON.stringify({
           userId,
-          profileKey: currentProfile,
+          patientId: currentPatientId,
           message,
         }),
       }
@@ -152,5 +150,15 @@ textarea.addEventListener("keydown", (e) => {
   }
 });
 
-// Cargar perfiles al iniciar la página
-loadProfiles();
+patientSelect.addEventListener("change", () => {
+  const newPatientId = patientSelect.value;
+
+  if (newPatientId && newPatientId !== currentPatientId) {
+    currentPatientId = newPatientId;
+    messagesDiv.innerHTML = "";
+    updateProfileDisplay();
+    addMessage(`Has cambiado al paciente: ${profileName.textContent}`, "system");
+  }
+});
+
+loadPatients();
