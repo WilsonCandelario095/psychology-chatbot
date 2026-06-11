@@ -4,6 +4,12 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getProfile, listProfiles } from "./profiles.js";
+import {
+  loadDocuments,
+  listDocuments,
+  getRelevantDocuments,
+  buildDocumentContext,
+} from "./documents.js";
 
 dotenv.config();
 
@@ -21,10 +27,20 @@ app.use(express.static(path.join(__dirname, "public")));
 */
 const conversations = {};
 
+const documents = await loadDocuments();
+
 // Endpoint para listar perfiles disponibles
 app.get("/profiles", (req, res) => {
   res.json({
     profiles: listProfiles(),
+  });
+});
+
+// Endpoint para listar documentos según el perfil actual
+app.get("/documents", (req, res) => {
+  const profileKey = req.query.profileKey || "psychologist";
+  res.json({
+    documents: listDocuments(documents, profileKey),
   });
 });
 
@@ -71,11 +87,31 @@ app.post("/chat", async (req, res) => {
       ];
     }
 
-    // Agregar mensaje del usuario
-    conversations[userId][profileKey].push({
+    const relevantDocs = getRelevantDocuments(documents, profileKey, message);
+    const docContext = buildDocumentContext(relevantDocs);
+
+    const contents = conversations[userId][profileKey].map((item) => ({
+      ...item,
+      role: item.role === "system" ? "user" : item.role,
+    }));
+
+    if (docContext) {
+      contents.push({
+        role: "user",
+        parts: [
+          {
+            text: `Información adicional para esta conversación:\n\n${docContext}`,
+          },
+        ],
+      });
+    }
+
+    const userMessage = {
       role: "user",
       parts: [{ text: message }],
-    });
+    };
+
+    contents.push(userMessage);
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -85,7 +121,7 @@ app.post("/chat", async (req, res) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contents: conversations[userId][profileKey],
+          contents,
         }),
       }
     );
