@@ -111,6 +111,7 @@ body {
   background: #1e293b;
   display: flex;
   gap: 10px;
+  align-items: stretch;
 }
 
 textarea {
@@ -124,6 +125,28 @@ textarea {
   font-size: 16px;
   background: #0f172a;
   color: white;
+}
+
+.input-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-button {
+  width: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-button svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 button {
@@ -140,10 +163,39 @@ button:hover {
   background: #1d4ed8;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+button.listening {
+  background: #dc2626;
+}
+
+.speech-status {
+  min-height: 18px;
+  padding: 0 20px 10px;
+  background: #1e293b;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
 .system {
   align-self: center;
   background: #334155;
   color: #cbd5e1;
   font-size: 12px;
   font-style: italic;
+}
+
+@media (max-width: 520px) {
+  .input-area {
+    flex-direction: column;
+  }
+
+  .input-controls button {
+    width: auto;
+    flex: 1;
+    min-height: 44px;
+  }
 }

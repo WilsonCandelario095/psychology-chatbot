@@ -89,7 +89,7 @@ export function buildDocumentContext(documents) {
   return documents
     .map(
       (doc, index) =>
-        `Documento ${index + 1}: ${doc.title}\nContenido relevante:\n${truncate(doc.content, 800)}`
+        `Documento ${index + 1}: ${doc.title}\nContenido relevante:\n${truncate(doc.content, 3000)}`
     )
     .join("\n\n");
 }

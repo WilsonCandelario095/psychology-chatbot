@@ -8,7 +8,6 @@ import {
   loadDocuments,
   listPatients,
   getPatientDocument,
-  getRelevantDocuments,
   buildDocumentContext,
 } from "./documents.js";
 
@@ -29,6 +28,11 @@ app.use(express.static(path.join(__dirname, "public")));
 const conversations = {};
 
 const documents = await loadDocuments();
+const ollamaUrl = (process.env.OLLAMA_URL || "http://localhost:11434").replace(
+  /\/+$/,
+  ""
+);
+const ollamaModel = process.env.OLLAMA_MODEL || "qwen2.5:3b";
 
 // Endpoint para listar perfiles disponibles
 app.get("/profiles", (req, res) => {
@@ -79,65 +83,45 @@ app.post("/chat", async (req, res) => {
       conversations[userId] = {};
     }
 
-    // Crear historial para este perfil si no existe
+    // Crear historial para este paciente si no existe
     if (!conversations[userId][selectedPatient.id]) {
       const patientContext = buildDocumentContext([selectedPatient]);
 
       conversations[userId][selectedPatient.id] = [
         {
-          role: "user",
-          parts: [
-            {
-              text: `${profile.systemPrompt}\n\nContexto del paciente seleccionado:\n\n${patientContext}`,
-            },
-          ],
+          role: "system",
+          content: `${profile.systemPrompt}\n\nContexto del paciente seleccionado:\n\n${patientContext}`,
         },
       ];
     }
 
-    const relevantDocs = getRelevantDocuments([selectedPatient], "patient", message);
-    const docContext = buildDocumentContext(relevantDocs);
+    const conversation = conversations[userId][selectedPatient.id];
 
-    const contents = conversations[userId][selectedPatient.id].map((item) => ({
-      ...item,
-      role: item.role === "system" ? "user" : item.role,
-    }));
-
-    if (docContext) {
-      contents.push({
-        role: "user",
-        parts: [
-          {
-            text: `Información adicional para esta conversación:\n\n${docContext}`,
-          },
+    const response = await fetch(`${ollamaUrl}/api/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: ollamaModel,
+        messages: [
+          conversation[0],
+          ...conversation.slice(1),
+          { role: "user", content: message },
         ],
-      });
-    }
-
-    const userMessage = {
-      role: "user",
-      parts: [{ text: message }],
-    };
-
-    contents.push(userMessage);
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents,
-        }),
-      }
-    );
+        stream: false,
+      }),
+    });
 
     const data = await response.json();
 
-    const reply =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!response.ok) {
+      return res.status(502).json({
+        error: data?.error || `Ollama respondió con el estado ${response.status}`,
+      });
+    }
+
+    const reply = data?.message?.content;
 
     if (!reply) {
       return res.status(500).json({
@@ -146,11 +130,10 @@ app.post("/chat", async (req, res) => {
       });
     }
 
-    // Guardar respuesta del modelo
-    conversations[userId][selectedPatient.id].push({
-      role: "model",
-      parts: [{ text: reply }],
-    });
+    conversation.push(
+      { role: "user", content: message },
+      { role: "assistant", content: reply }
+    );
 
     res.json({ 
       reply,

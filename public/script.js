@@ -1,8 +1,19 @@
+import { setupSpeechToText } from "./speech-to-text.js";
+
 const messagesDiv =
   document.getElementById("messages");
 
 const textarea =
   document.getElementById("message");
+
+const speechButton =
+  document.getElementById("speechButton");
+
+const speechStatus =
+  document.getElementById("speechStatus");
+
+const sendButton =
+  document.getElementById("sendButton");
 
 const profileName =
   document.getElementById("profileName");
@@ -15,6 +26,13 @@ const userId =
 
 let currentPatientId = "";
 let patients = [];
+
+const stopDictation = setupSpeechToText({
+  button: speechButton,
+  textarea,
+  status: speechStatus,
+  onSilence: sendMessage,
+});
 
 function updateProfileDisplay() {
   const selectedPatient = patients.find((patient) => patient.id === currentPatientId);
@@ -82,6 +100,8 @@ async function sendMessage() {
 
   if (!message) return;
 
+  stopDictation();
+
   // Mostrar mensaje usuario
   addMessage(message, "user");
 
@@ -138,6 +158,8 @@ async function sendMessage() {
     );
   }
 }
+
+sendButton.addEventListener("click", sendMessage);
 
 // ENTER para enviar
 textarea.addEventListener("keydown", (e) => {
