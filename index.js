@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getProfile, listProfiles } from "./profiles.js";
@@ -26,13 +27,134 @@ app.use(express.static(path.join(__dirname, "public")));
   Luego puedes usar MongoDB/PostgreSQL
 */
 const conversations = {};
+const progressPath = path.join(__dirname, ".data", "session-progress.json");
 
 const documents = await loadDocuments();
+let sessionProgress = await loadSessionProgress();
+const approvalLocks = new Set();
 const ollamaUrl = (process.env.OLLAMA_URL || "http://localhost:11434").replace(
   /\/+$/,
   ""
 );
 const ollamaModel = process.env.OLLAMA_MODEL || "qwen2.5:3b";
+
+async function loadSessionProgress() {
+  try {
+    const savedProgress = await fs.readFile(progressPath, "utf-8");
+    const parsedProgress = JSON.parse(savedProgress);
+
+    if (!parsedProgress || typeof parsedProgress !== "object" || Array.isArray(parsedProgress)) {
+      throw new Error("Saved session progress must be a JSON object");
+    }
+
+    return new Map(Object.entries(parsedProgress));
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return new Map();
+    }
+    throw error;
+  }
+}
+
+async function saveSessionProgress(progress) {
+  const directory = path.dirname(progressPath);
+  const temporaryPath = `${progressPath}.${process.pid}.tmp`;
+
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(
+    temporaryPath,
+    JSON.stringify(Object.fromEntries(progress), null, 2),
+    "utf-8"
+  );
+  await fs.rename(temporaryPath, progressPath);
+}
+
+function getProgressKey(userId, patientId) {
+  return JSON.stringify([userId, patientId]);
+}
+
+async function changeSessionProgress(userId, patient, expectedSession, nextSession) {
+  const progressKey = getProgressKey(userId, patient.id);
+
+  if (approvalLocks.has(progressKey)) {
+    return {
+      status: 409,
+      body: { error: "This session is already being changed" },
+    };
+  }
+
+  approvalLocks.add(progressKey);
+
+  try {
+    const currentSession = getCurrentSession(userId, patient);
+
+    if (expectedSession !== currentSession) {
+      return {
+        status: 409,
+        body: {
+          error: "The active session changed. Refresh the session status before continuing.",
+          currentSession,
+        },
+      };
+    }
+
+    const nextProgress = new Map(sessionProgress);
+    if (nextSession === 1) {
+      nextProgress.delete(progressKey);
+    } else {
+      nextProgress.set(progressKey, nextSession);
+    }
+
+    await saveSessionProgress(nextProgress);
+    sessionProgress = nextProgress;
+
+    if (conversations[userId]) {
+      delete conversations[userId][patient.id];
+    }
+
+    return {
+      status: 200,
+      body: {
+        currentSession: nextSession,
+        totalSessions: patient.sessions.length,
+        title: patient.sessions[nextSession - 1].title,
+        isLastSession: nextSession === patient.sessions.length,
+      },
+    };
+  } catch (error) {
+    console.error("Error saving session progress:", error);
+    return {
+      status: 500,
+      body: { error: "Could not save session progress" },
+    };
+  } finally {
+    approvalLocks.delete(progressKey);
+  }
+}
+
+function getCurrentSession(userId, patient) {
+  return sessionProgress.get(getProgressKey(userId, patient.id)) || 1;
+}
+
+function getPatientSystemPrompt(profile, patient, userId) {
+  if (!patient.sessions) {
+    const patientContext = buildDocumentContext([patient]);
+    return `${profile.systemPrompt}\n\nContexto del paciente seleccionado:\n\n${patientContext}`;
+  }
+
+  const currentSession = getCurrentSession(userId, patient);
+  const session = patient.sessions.find(({ number }) => number === currentSession);
+
+  if (!session) {
+    throw new Error(`No prompt is configured for session ${currentSession}`);
+  }
+
+  return `${session.prompt}\n\nResponde únicamente dentro de esta sesión activa. No anticipes ni inventes actividades, hechos, respuestas o conclusiones de otras sesiones.`;
+}
+
+function isValidUserId(userId) {
+  return typeof userId === "string" && userId.length > 0 && userId.length <= 128;
+}
 
 // Endpoint para listar perfiles disponibles
 app.get("/profiles", (req, res) => {
@@ -46,6 +168,124 @@ app.get(["/patients", "/documents"], (req, res) => {
   res.json({
     patients: listPatients(documents),
   });
+});
+
+app.get("/patients/:patientId/progress", (req, res) => {
+  const { patientId } = req.params;
+  const userId = req.query.userId;
+  const patient = getPatientDocument(documents, patientId);
+
+  if (!patient?.sessions) {
+    return res.status(404).json({ error: "Patient sessions not found" });
+  }
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: "Valid userId is required" });
+  }
+
+  const currentSession = getCurrentSession(userId, patient);
+
+  if (currentSession > patient.sessions.length) {
+    return res.status(409).json({ error: "Saved session progress is invalid" });
+  }
+
+  res.json({
+    currentSession,
+    totalSessions: patient.sessions.length,
+    title: patient.sessions[currentSession - 1].title,
+    isLastSession: currentSession === patient.sessions.length,
+  });
+});
+
+app.post("/patients/:patientId/approve-session", async (req, res) => {
+  const { patientId } = req.params;
+  const { userId, currentSession: approvedSession } = req.body;
+  const patient = getPatientDocument(documents, patientId);
+
+  if (!patient?.sessions) {
+    return res.status(404).json({ error: "Patient sessions not found" });
+  }
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: "Valid userId is required" });
+  }
+
+  const currentSession = getCurrentSession(userId, patient);
+
+  if (approvedSession !== currentSession) {
+    return res.status(409).json({
+      error: "The active session changed. Refresh the session status before approving.",
+      currentSession,
+    });
+  }
+
+  if (currentSession >= patient.sessions.length) {
+    return res.status(409).json({ error: "There are no more sessions to approve" });
+  }
+
+  const result = await changeSessionProgress(
+    userId,
+    patient,
+    approvedSession,
+    currentSession + 1
+  );
+  res.status(result.status).json(result.body);
+});
+
+app.post("/patients/:patientId/rewind-session", async (req, res) => {
+  const { patientId } = req.params;
+  const { userId, currentSession: expectedSession } = req.body;
+  const patient = getPatientDocument(documents, patientId);
+
+  if (!patient?.sessions) {
+    return res.status(404).json({ error: "Patient sessions not found" });
+  }
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: "Valid userId is required" });
+  }
+
+  const currentSession = getCurrentSession(userId, patient);
+  if (expectedSession !== currentSession) {
+    return res.status(409).json({
+      error: "The active session changed. Refresh the session status before continuing.",
+      currentSession,
+    });
+  }
+
+  if (currentSession <= 1) {
+    return res.status(409).json({ error: "Already at the first session" });
+  }
+
+  const result = await changeSessionProgress(
+    userId,
+    patient,
+    expectedSession,
+    currentSession - 1
+  );
+  res.status(result.status).json(result.body);
+});
+
+app.post("/patients/:patientId/reset-progress", async (req, res) => {
+  const { patientId } = req.params;
+  const { userId, currentSession: expectedSession } = req.body;
+  const patient = getPatientDocument(documents, patientId);
+
+  if (!patient?.sessions) {
+    return res.status(404).json({ error: "Patient sessions not found" });
+  }
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: "Valid userId is required" });
+  }
+
+  const result = await changeSessionProgress(
+    userId,
+    patient,
+    expectedSession,
+    1
+  );
+  res.status(result.status).json(result.body);
 });
 
 // Endpoint para obtener detalles de un perfil
@@ -69,6 +309,12 @@ app.post("/chat", async (req, res) => {
       });
     }
 
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({
+        error: "Valid userId is required",
+      });
+    }
+
     const profile = getProfile("patient");
     const selectedPatient = getPatientDocument(documents, patientId);
 
@@ -83,19 +329,20 @@ app.post("/chat", async (req, res) => {
       conversations[userId] = {};
     }
 
+    const systemPrompt = getPatientSystemPrompt(profile, selectedPatient, userId);
+
     // Crear historial para este paciente si no existe
     if (!conversations[userId][selectedPatient.id]) {
-      const patientContext = buildDocumentContext([selectedPatient]);
-
       conversations[userId][selectedPatient.id] = [
         {
           role: "system",
-          content: `${profile.systemPrompt}\n\nContexto del paciente seleccionado:\n\n${patientContext}`,
+          content: systemPrompt,
         },
       ];
     }
 
     const conversation = conversations[userId][selectedPatient.id];
+    conversation[0] = { role: "system", content: systemPrompt };
 
     const response = await fetch(`${ollamaUrl}/api/chat`, {
       method: "POST",
@@ -139,8 +386,11 @@ app.post("/chat", async (req, res) => {
       reply,
       profile: {
         key: selectedPatient.id,
-        name: selectedPatient.title,
+        name: selectedPatient.name || selectedPatient.title,
       },
+      session: selectedPatient.sessions
+        ? getCurrentSession(userId, selectedPatient)
+        : undefined,
     });
 
   } catch (error) {
@@ -164,6 +414,8 @@ app.delete("/chat/:userId/:patientId", (req, res) => {
   }
 });
 
-app.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
+const port = Number(process.env.PORT) || 3000;
+
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
 });

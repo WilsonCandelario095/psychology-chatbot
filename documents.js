@@ -22,12 +22,19 @@ export async function loadDocuments() {
       const id = path.basename(fileName, ext);
       const audience = ["patient"];
 
-      docs.push({
+      const document = {
         id,
         title: id.replace(/_/g, " "),
         audience,
         content,
-      });
+      };
+
+      if (id === "shared_conversation_Valentina") {
+        document.name = "Valentina Gómez";
+        document.sessions = parseSessions(content);
+      }
+
+      docs.push(document);
     }
 
     return docs;
@@ -40,14 +47,15 @@ export async function loadDocuments() {
 export function listPatients(documents) {
   return documents.map((doc) => ({
     id: doc.id,
-    name: getSelectorLabel(doc.title),
+    name: doc.name || getSelectorLabel(doc.title),
     summary: getDocumentSummary(doc.content),
     audience: doc.audience,
+    sessionCount: doc.sessions?.length,
   }));
 }
 
 export function getPatientDocument(documents, patientId) {
-  return documents.find((doc) => doc.id === patientId) || documents[0] || null;
+  return documents.find((doc) => doc.id === patientId) || null;
 }
 
 export function listDocuments(documents, profileKey) {
@@ -92,6 +100,31 @@ export function buildDocumentContext(documents) {
         `Documento ${index + 1}: ${doc.title}\nContenido relevante:\n${truncate(doc.content, 3000)}`
     )
     .join("\n\n");
+}
+
+function parseSessions(content) {
+  const sessionPattern = /^## SESIÓN (\d+): (.+)$/gm;
+  const headings = [...content.matchAll(sessionPattern)];
+
+  if (headings.length === 0) {
+    throw new Error("Valentina's document does not contain any marked sessions");
+  }
+
+  return headings.map((heading, index) => {
+    const start = heading.index + heading[0].length;
+    const end = headings[index + 1]?.index ?? content.length;
+    const prompt = content.slice(start, end).trim();
+
+    if (!prompt) {
+      throw new Error(`Session ${heading[1]} has no prompt content`);
+    }
+
+    return {
+      number: Number(heading[1]),
+      title: heading[2].trim(),
+      prompt,
+    };
+  });
 }
 
 function truncate(text, maxLength) {

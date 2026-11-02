@@ -19,6 +19,20 @@
       <select id="patientSelect" class="profile-select">
         <option value="">Cargando pacientes...</option>
       </select>
+      <div id="sessionControls" class="session-controls" hidden>
+        <span id="sessionStatus" role="status" aria-live="polite"></span>
+        <div class="session-actions">
+          <button id="rewindSessionButton" class="secondary-button" type="button" disabled>
+            Volver una sesión
+          </button>
+          <button id="approveSessionButton" type="button" disabled>
+            Aprobar sesión y avanzar
+          </button>
+          <button id="resetProgressButton" class="danger-button" type="button" disabled>
+            Reiniciar progreso
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="messages" id="messages"></div>
@@ -51,6 +65,19 @@
     <p id="speechStatus" class="speech-status" role="status" aria-live="polite"></p>
 
   </div>
+
+  <dialog id="sessionActionDialog" class="confirmation-dialog" aria-labelledby="sessionActionTitle">
+    <h2 id="sessionActionTitle"></h2>
+    <p id="sessionActionMessage"></p>
+    <div class="dialog-actions">
+      <button id="cancelSessionActionButton" class="secondary-button" type="button">
+        Cancelar
+      </button>
+      <button id="confirmSessionActionButton" type="button">
+        Confirmar
+      </button>
+    </div>
+  </dialog>
 
   <script type="module" src="script.js"></script>
 
